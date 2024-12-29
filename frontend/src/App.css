@@ -1,0 +1,176 @@
+/* Reset some default browser styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Global Styles */
+body {
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f7f7f7;
+  color: #333;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 10px;
+}
+.main {
+  width: 100vw;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+}
+.left {
+  width: 20%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border: 1px solid #4caf50;
+  padding: 5px;
+  border-radius: 10px;
+}
+.middle {
+  width: 30%;
+}
+.right {
+  width: 40%;
+}
+h1 {
+  font-size: 36px;
+  color: #3a3a3a;
+  margin-bottom: 40px;
+  font-weight: 600;
+}
+
+h2 {
+  font-size: 24px;
+  margin-bottom: 20px;
+  color: #555;
+}
+
+button {
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  padding: 12px 25px;
+  font-size: 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+button:hover {
+  background-color: #45a049;
+  transform: scale(1.05);
+}
+
+button:disabled {
+  background-color: #d3d3d3;
+  cursor: not-allowed;
+}
+
+/* File Upload Section */
+.file-upload-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 30px;
+  max-width: 500px;
+  width: 100%;
+}
+
+input[type="file"] {
+  background-color: #fff;
+  padding: 12px 20px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  font-size: 16px;
+  width: 100%;
+  cursor: pointer;
+}
+
+input[type="file"]:hover {
+  border-color: #4caf50;
+}
+
+/* Form Container */
+.form-container {
+  background-color: white;
+  padding: 30px;
+  border-radius: 10px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  max-width: 600px;
+  width: 100%;
+  margin-top: 20px;
+}
+
+.form-container input[type="text"] {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  font-size: 16px;
+  margin-bottom: 15px;
+  width: 100%;
+  transition: border-color 0.3s ease;
+}
+
+.form-container input[type="text"]:focus {
+  border-color: #4caf50;
+  outline: none;
+}
+
+/* Error Message */
+.error-message {
+  color: #d32f2f;
+  font-size: 14px;
+  margin-top: 15px;
+}
+
+/* Success Message */
+.success-message {
+  color: #388e3c;
+  font-size: 14px;
+  margin-top: 15px;
+}
+
+/* Generated File Section */
+.generated-file-container {
+  margin-top: 20px;
+  text-align: center;
+}
+
+.generated-file-container a {
+  text-decoration: none;
+  color: #4caf50;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.generated-file-container a:hover {
+  text-decoration: underline;
+}
+
+/* Media Queries for Responsiveness */
+@media (max-width: 600px) {
+  .file-upload-container {
+    gap: 10px;
+  }
+
+  .form-container {
+    padding: 20px;
+  }
+}
+
+.loading-spinner {
+  text-align: center;
+  margin-top: 20px;
+}
+
+.loading-spinner p {
+  font-size: 16px;
+  color: #555;
+}
