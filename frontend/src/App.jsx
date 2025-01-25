@@ -2,81 +2,76 @@ import React, { useState } from "react";
 import axios from "axios";
 import "./App.css";
 
+const FileUpload = ({ label, accept, onChange, onUpload, buttonText }) => (
+  <div className="file-upload-container">
+    <label>{label}</label>
+    <input type="file" accept={accept} onChange={onChange} />
+    {onUpload && <button onClick={onUpload}>{buttonText}</button>}
+  </div>
+);
+
 function App() {
-  const [file, setFile] = useState(null);
+  const [docxFile, setDocxFile] = useState(null);
+  const [excelFile, setExcelFile] = useState(null);
   const [filePath, setFilePath] = useState("");
   const [variables, setVariables] = useState([]);
-  const [userInputs, setUserInputs] = useState({});
-  const [generatedFile, setGeneratedFile] = useState(null);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false); 
-  const handleFileChange = (event) => {
-    const selectedFile = event.target.files[0];
-    setFile(selectedFile);
+  const [loading, setLoading] = useState(false);
+
+  const handleFileChange = (setter) => (event) => {
+    setter(event.target.files[0]);
   };
 
-  const handleUpload = async () => {
-    if (!file) {
-      alert("Please upload a file first.");
-      return;
-    }
-
+  const handleDocxUpload = async () => {
+    if (!docxFile) return alert("Please upload a .docx file first.");
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", docxFile);
 
     try {
-      const response = await axios.post(
-        "http://localhost:3000/upload",
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        }
-      );
-
-      setVariables(response.data.variables);
-      setFilePath(response.data.filePath);
+      const { data } = await axios.post("http://localhost:3000/upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setVariables(data.variables);
+      setFilePath(data.filePath);
       setError("");
-    } catch (error) {
-      setError("Error uploading the file.");
+    } catch (err) {
+      setError("Failed to upload and process the .docx file.");
     }
-  };
-
-  const handleInputChange = (variable, value) => {
-    setUserInputs({
-      ...userInputs,
-      [variable]: value,
-    });
   };
 
   const handleGenerate = async () => {
-    if (Object.keys(userInputs).length === variables.length) {
-      setLoading(true); 
-      try {
-        const response = await axios.post(
-          "http://localhost:3000/generate",
-          {
-            filePath,
-            updatedVariables: userInputs,
-          },
-          {
-            responseType: "blob", // Ensure the response is treated as a binary blob
-          }
-        );
+    if (!excelFile || !filePath) {
+      setError("Please upload both .docx and Excel files.");
+      return;
+    }
 
-        const pdfBlob = new Blob([response.data], { type: "application/pdf" });
-        const pdfUrl = URL.createObjectURL(pdfBlob);
-        setGeneratedFile(pdfUrl);
-        setError("");
-      } catch (error) {
-        console.error("Error generating file:", error);
-        setError("Error generating the file.");
-      } finally {
-        setLoading(false); 
-      }
-    } else {
-      setError("Please fill all inputs.");
+    setLoading(true);
+    const formData = new FormData();
+    formData.append("excelFile", excelFile);
+    formData.append("filePath", filePath);
+
+    try {
+      // Generate files request
+      const response = await axios.post("http://localhost:3000/generate", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+        responseType: "blob", // Ensures the response is treated as a downloadable file
+      });
+
+      // Create a downloadable link
+      const blob = new Blob([response.data], { type: "application/zip" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", "generated_files.zip");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setError("");
+    } catch (err) {
+      setError("Error generating the files. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -84,26 +79,32 @@ function App() {
     <div className="main">
       <div className="left">
         <h1>File Generator</h1>
-        <div className="file-upload-container">
-          <input type="file" accept=".docx" onChange={handleFileChange} />
-          <button onClick={handleUpload}>Upload</button>
-        </div>
+        <FileUpload
+          label="Upload .docx file:"
+          accept=".docx"
+          onChange={handleFileChange(setDocxFile)}
+          onUpload={handleDocxUpload}
+          buttonText="Extract Variables"
+        />
+        <FileUpload
+          label="Upload Excel file:"
+          accept=".xlsx, .xls"
+          onChange={handleFileChange(setExcelFile)}
+        />
+        <button onClick={handleGenerate} disabled={loading}>
+          {loading ? "Generating..." : "Generate Files"}
+        </button>
       </div>
 
       <div className="middle">
         {variables.length > 0 && (
-          <div className="form-container">
-            <h2>Fill in the following variables:</h2>
-            {variables.map((variable) => (
-              <div key={variable}>
-                <label>{variable}:</label>
-                <input
-                  type="text"
-                  onChange={(e) => handleInputChange(variable, e.target.value)}
-                />
-              </div>
-            ))}
-            <button onClick={handleGenerate}>Generate</button>
+          <div className="variables-container">
+            <h2>Extracted Variables:</h2>
+            <ul>
+              {variables.map((variable, index) => (
+                <li key={index}>{variable}</li>
+              ))}
+            </ul>
           </div>
         )}
       </div>
@@ -112,19 +113,7 @@ function App() {
         {error && <div className="error-message">{error}</div>}
         {loading && (
           <div className="loading-spinner">
-            <p>Generating your PDF... Please wait.</p>
-          </div>
-        )}
-        {generatedFile && !loading && (
-          <div className="generated-file-container">
-            <h2>Generated File:</h2>
-            <iframe
-              src={generatedFile}
-              title="Generated PDF"
-              width="100%"
-              height="500px"
-              frameBorder="0"
-            ></iframe>
+            <p>Generating files... Please wait.</p>
           </div>
         )}
       </div>

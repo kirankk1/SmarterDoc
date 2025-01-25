@@ -6,9 +6,10 @@ import mammoth from "mammoth";
 import path from "path";
 import cors from "cors";
 import dotenv from "dotenv";
-import convertapi from "convertapi";  // Import ConvertAPI SDK
-import { fileURLToPath } from "url";  // Import fileURLToPath
-import { dirname } from "path";  // Import dirname
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+import xlsx from "xlsx";
+import archiver from "archiver";
 
 const app = express();
 const port = 3000;
@@ -18,7 +19,6 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static("uploads"));
 
-// Get the current directory in an ES module-safe way
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -30,6 +30,7 @@ const ensureDirectoryExistence = (filePath) => {
   }
 };
 
+// Configure Multer Storage
 const storage = multer.diskStorage({
   destination: "uploads/",
   filename: (req, file, cb) => {
@@ -38,28 +39,23 @@ const storage = multer.diskStorage({
   },
 });
 
+// Configure Multer File Filter
 const upload = multer({
   storage,
   fileFilter: (req, file, cb) => {
-    if (
-      file.mimetype ===
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    ) {
+    const allowedMimeTypes = [
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
+    ];
+    if (allowedMimeTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error("Only .docx files are allowed."));
+      cb(new Error("Only .docx and .xlsx files are allowed."));
     }
   },
 });
 
-const deleteFile = (filePath) => {
-  if (fs.existsSync(filePath)) {
-    fs.unlink(filePath, (err) => {
-      if (err) console.error(`Error deleting file: ${filePath}`, err);
-    });
-  }
-};
-
+// Upload and Extract Variables from DOCX
 app.post("/upload", upload.single("file"), async (req, res) => {
   const filePath = req.file?.path;
 
@@ -78,63 +74,82 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 
     res.json({ variables, filePath });
   } catch (error) {
-    console.error("Error processing file:", error);
-    res.status(500).json({ error: "An error occurred while processing the file." });
+    console.error("Error processing DOCX file:", error);
+    res.status(500).json({ error: "An error occurred while processing the DOCX file." });
   }
 });
 
-app.post("/generate", async (req, res) => {
-  const { filePath, updatedVariables } = req.body;
+// Generate Updated Files from DOCX and Excel
+app.post("/generate", upload.single("excelFile"), async (req, res) => {
+  const { filePath } = req.body; // Path to the uploaded .docx file
+  const excelFile = req.file?.path; // Path to the uploaded Excel file
 
-  if (!filePath || !updatedVariables) {
-    return res.status(400).json({ error: "Missing filePath or updatedVariables." });
+  if (!filePath || !excelFile) {
+    return res.status(400).json({ error: "Missing required filePath or Excel file." });
   }
 
   try {
+    // Parse Excel File
+    const workbook = xlsx.readFile(excelFile);
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const rows = xlsx.utils.sheet_to_json(worksheet);
+
     if (!fs.existsSync(filePath)) {
-      return res.status(400).json({ error: "File not found." });
+      return res.status(400).json({ error: "DOCX file not found." });
     }
 
     const fileBuffer = fs.readFileSync(filePath);
     const result = await mammoth.extractRawText({ buffer: fileBuffer });
-    let fileContent = result.value;
+    const templateContent = result.value;
 
-    // Replace variables in the content
-    Object.keys(updatedVariables).forEach((variable) => {
-      const regex = new RegExp(`{{\\s*${variable}\\s*}}`, "g");
-      fileContent = fileContent.replace(regex, updatedVariables[variable]);
+    const generatedFiles = await Promise.all(
+      rows.map(async (row, index) => {
+        if (!row.name) return null; // Skip if the "name" variable is blank
+
+        let updatedContent = templateContent;
+
+        Object.keys(row).forEach((variable) => {
+          const regex = new RegExp(`{{\\s*${variable}\\s*}}`, "g");
+          updatedContent = updatedContent.replace(regex, row[variable]);
+        });
+
+        // const outputFilePath = path.join(__dirname, "uploads", `updated_file_${index + 1}.docx`);
+        const sanitizedFileName = row.name.replace(/[^a-zA-Z0-9-_]/g, "_");
+        const outputFilePath = path.join(__dirname, "uploads", `${sanitizedFileName}.docx`);
+        ensureDirectoryExistence(outputFilePath);
+        await fs.promises.writeFile(outputFilePath, updatedContent);
+
+        return outputFilePath;
+      })
+    );
+
+    const validGeneratedFiles = generatedFiles.filter(Boolean);
+
+    if (!validGeneratedFiles.length) {
+      return res.status(400).json({ error: "No valid rows processed for file generation." });
+    }
+
+    const zipFilePath = path.join(__dirname, "uploads", "generated_files.zip");
+    const output = fs.createWriteStream(zipFilePath);
+    const archive = archiver("zip", { zlib: { level: 9 } });
+
+    archive.pipe(output);
+    validGeneratedFiles.forEach((file) => {
+      archive.file(file, { name: path.basename(file) });
     });
+    await archive.finalize();
 
-    const updatedFilePath = filePath.replace(/\.docx$/, "_updated.docx");
-    fs.writeFileSync(updatedFilePath, fileContent);
-
-    // Initialize ConvertAPI with your secret key
-    const convertApi = new convertapi(process.env.CONVERTAPITOKEN);
-
-    // Use ConvertAPI to convert the updated DOCX file to PDF
-    convertApi.convert('pdf', { File: updatedFilePath }).then(function(result) {
-      const pdfFilePath = path.join(__dirname, 'uploads', 'updated_file.pdf');
-      
-      // Ensure the 'uploads' directory exists before saving the PDF
-      ensureDirectoryExistence(pdfFilePath);  // Ensure directory exists
-
-      // Save the PDF file to the 'uploads' directory
-      result.saveFiles(pdfFilePath).then(() => {
-        res.setHeader("Content-Type", "application/pdf");
-        res.setHeader("Content-Disposition", 'inline; filename="updated_file.pdf"');
-        res.sendFile(pdfFilePath); // Send the PDF file back to the client
-      }).catch(error => {
-        console.error("Error saving PDF:", error);
-        res.status(500).json({ error: "An error occurred while saving the PDF file." });
+    output.on("close", () => {
+      res.download(zipFilePath, "generated_files.zip", (err) => {
+        if (err) console.error("Error downloading ZIP file:", err);
       });
-    }).catch(error => {
-      console.error("Error converting DOCX to PDF:", error);
-      res.status(500).json({ error: "An error occurred during the conversion." });
     });
-    
   } catch (error) {
-    console.error("Error generating file:", error);
-    res.status(500).json({ error: "An error occurred while generating the file." });
+    console.error("Error generating files:", error);
+    res.status(500).json({ error: "An error occurred while generating the files." });
+  } finally {
+    if (excelFile) await fs.promises.unlink(excelFile);
   }
 });
 
