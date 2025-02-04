@@ -80,6 +80,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 });
 
 // Generate Updated Files from DOCX and Excel
+// Generate Updated Files from DOCX and Excel
 app.post("/generate", upload.single("excelFile"), async (req, res) => {
   const { filePath } = req.body; // Path to the uploaded .docx file
   const excelFile = req.file?.path; // Path to the uploaded Excel file
@@ -114,7 +115,6 @@ app.post("/generate", upload.single("excelFile"), async (req, res) => {
           updatedContent = updatedContent.replace(regex, row[variable]);
         });
 
-        // const outputFilePath = path.join(__dirname, "uploads", `updated_file_${index + 1}.docx`);
         const sanitizedFileName = row.name.replace(/[^a-zA-Z0-9-_]/g, "_");
         const outputFilePath = path.join(__dirname, "uploads", `${sanitizedFileName}.docx`);
         ensureDirectoryExistence(outputFilePath);
@@ -141,6 +141,24 @@ app.post("/generate", upload.single("excelFile"), async (req, res) => {
     await archive.finalize();
 
     output.on("close", () => {
+      // Cleanup: Delete all .docx files except the .zip file
+      const uploadsDir = path.join(__dirname, "uploads");
+      fs.readdir(uploadsDir, (err, files) => {
+        if (err) {
+          console.error("Error reading uploads directory:", err);
+          return;
+        }
+
+        files.forEach((file) => {
+          if (file.endsWith(".docx")) {
+            const filePath = path.join(uploadsDir, file);
+            fs.unlink(filePath, (err) => {
+              if (err) console.error("Error deleting .docx file:", err);
+            });
+          }
+        });
+      });
+
       res.download(zipFilePath, "generated_files.zip", (err) => {
         if (err) console.error("Error downloading ZIP file:", err);
       });
